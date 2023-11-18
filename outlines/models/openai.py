@@ -18,11 +18,11 @@ if TYPE_CHECKING:
 
 class OpenAIAPI:
     def __init__(
-        self,
-        model_name: str,
-        api_key: Optional[str] = os.getenv("OPENAI_API_KEY"),
-        temperature: float = 1.0,
-        max_retries: int = 6,
+            self,
+            model_name: str,
+            api_key: Optional[str] = os.getenv("OPENAI_API_KEY"),
+            temperature: float = 1.0,
+            max_retries: int = 6,
     ):
         try:
             import openai
@@ -63,10 +63,10 @@ class OpenAIAPI:
 
         @functools.partial(outlines.vectorize, signature="(),(),(m),()->(s)")
         async def generate_base(
-            prompt: str,
-            max_tokens: int,
-            stop_at: List[Optional[str]],
-            samples: int,
+                prompt: str,
+                max_tokens: int,
+                stop_at: List[Optional[str]],
+                samples: int,
         ) -> str:
             responses = await call_api(
                 model_name,
@@ -87,18 +87,18 @@ class OpenAIAPI:
 
             return results
 
-        def longest_common_prefix(str1: str, str2: str) -> str:
+        def longest_common_prefix(tokens1: List[int], tokens2: List[int]) -> List[int]:
             i = 0
-            while i < len(str1) and i < len(str2) and str1[i] == str2[i]:
+            while i < len(tokens1) and i < len(tokens2) and tokens1[i] == tokens2[i]:
                 i += 1
-            return str1[:i]
+            return tokens1[:i]
 
         def get_choices_with_longest_common_prefix(
-            response: str, is_in: List[str]
-        ) -> Tuple[str, List[str]]:
+                response: List[int], is_in: List[List[int]]
+        ) -> Tuple[List[int], List[List[int]]]:
             max_len_prefix = 0
             is_in_left = []
-            prefix = ""
+            prefix = []
             for i in range(len(is_in)):
                 len_prefix = len(longest_common_prefix(response, is_in[i]))
 
@@ -118,15 +118,13 @@ class OpenAIAPI:
             while len(transposed) > 0 and len(to_mask | transposed[0]) <= 300:
                 to_mask = to_mask | transposed.popleft()
 
-            mask = {token: 100 for token in to_mask}
-
-            return mask
+            return {token: 100 for token in to_mask}
 
         @functools.partial(outlines.vectorize, signature="(),(m),()->(s)")
         async def generate_choice(
-            prompt: str,
-            is_in: List[str],
-            samples: int,
+                prompt: str,
+                is_in: List[str],
+                samples: int,
         ) -> Union[List[str], str]:
             """Generate a sequence that must be one of many options.
 
@@ -194,23 +192,32 @@ class OpenAIAPI:
                         decoded.append(current_resp)
                         break
                     else:
+                        # map response to tokens
+                        tokenized_resp = tokenizer.encode(current_resp)
                         (
-                            current_resp,
-                            is_in_left,
+                            tokenized_resp,
+                            encoded,
                         ) = get_choices_with_longest_common_prefix(
-                            current_resp, is_in_left
+                            tokenized_resp, encoded
                         )
 
-                        if len(current_resp) == 0:
+                        if len(tokenized_resp) == 0:
                             greedy = True  # next iteration will be "greedy"
                             continue
                         else:
-                            decoded.append(current_resp)
+                            decoded.append("".join(tokenizer.decode(tokenized_resp)))
+
+                            # map back to words
+                            is_in_left = [
+                                "".join(tokenizer.decode(tokens))
+                                for tokens in encoded
+                            ]
+
                             if len(is_in_left) == 1:  # only one choice left
                                 decoded.append(is_in_left[0])
                                 break
 
-                            greedy = False  # after each success, switch (or stay) with "optimistic" approach
+                            greedy = False  # after each success, stay with (or switch to) "optimistic" approach
 
                         prompt = prompt + "".join(decoded)
 
@@ -222,13 +229,13 @@ class OpenAIAPI:
         self.generate_choice = generate_choice
 
     def __call__(
-        self,
-        prompt: str,
-        max_tokens: int = 500,
-        *,
-        samples=1,
-        stop_at: Union[List[Optional[str]], str] = [],
-        is_in: Optional[List[str]] = None,
+            self,
+            prompt: str,
+            max_tokens: int = 500,
+            *,
+            samples=1,
+            stop_at: Union[List[Optional[str]], str] = [],
+            is_in: Optional[List[str]] = None,
     ):
         if is_in is not None and stop_at:
             raise TypeError("You cannot set `is_in` and `stop_at` at the same time.")
@@ -252,18 +259,18 @@ def error_handler(api_call_fn: Callable) -> Callable:
         try:
             return api_call_fn(*args, **kwargs)
         except (
-            openai.APITimeoutError,
-            openai.InternalServerError,
-            openai.RateLimitError,
+                openai.APITimeoutError,
+                openai.InternalServerError,
+                openai.RateLimitError,
         ) as e:
             raise OSError(f"Could not connect to the OpenAI API: {e}")
         except (
-            openai.AuthenticationError,
-            openai.BadRequestError,
-            openai.ConflictError,
-            openai.PermissionDeniedError,
-            openai.NotFoundError,
-            openai.UnprocessableEntityError,
+                openai.AuthenticationError,
+                openai.BadRequestError,
+                openai.ConflictError,
+                openai.PermissionDeniedError,
+                openai.NotFoundError,
+                openai.UnprocessableEntityError,
         ) as e:
             raise e
 
@@ -271,14 +278,14 @@ def error_handler(api_call_fn: Callable) -> Callable:
 
 
 async def call_completion_api(
-    client: "AsyncOpenAI",
-    model: str,
-    prompt: str,
-    max_tokens: int,
-    temperature: float,
-    stop_sequences: List[str],
-    logit_bias: Dict[str, int],
-    num_samples: int,
+        client: "AsyncOpenAI",
+        model: str,
+        prompt: str,
+        max_tokens: int,
+        temperature: float,
+        stop_sequences: List[str],
+        logit_bias: Dict[str, int],
+        num_samples: int,
 ) -> dict:
     response = await client.completions.create(
         model=model,
@@ -293,14 +300,14 @@ async def call_completion_api(
 
 
 async def call_chat_completion_api(
-    client: "AsyncOpenAI",
-    model: str,
-    messages: List[Dict[str, str]],
-    max_tokens: int,
-    temperature: float,
-    stop_sequences: List[str],
-    logit_bias: Dict[str, int],
-    num_samples: int,
+        client: "AsyncOpenAI",
+        model: str,
+        messages: List[Dict[str, str]],
+        max_tokens: int,
+        temperature: float,
+        stop_sequences: List[str],
+        logit_bias: Dict[str, int],
+        num_samples: int,
 ) -> dict:
     response = await client.chat.completions.create(
         model=model,
